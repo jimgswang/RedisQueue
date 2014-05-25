@@ -1,10 +1,10 @@
 
 'use strict';
 
-var expect = require('chai').expect
-  , sinon = require('sinon')
-  , redis = require('redis')
-  , Queue = require('../src/queue')
+var expect = require('chai').expect,
+    sinon = require('sinon'),
+    redis = require('redis'),
+    Queue = require('../src/queue') 
 ;
 
 describe('Queue', function() {
