@@ -39,4 +39,29 @@ describe('Queue', function() {
     });
   });
 
+  describe('methods', function() {
+
+    var queue
+    ;
+
+    beforeEach(function() {
+      queue = new Queue('test', {});
+
+    });
+
+    describe('.enqueue', function() {
+
+      beforeEach(function() {
+        queue._client.incr = new sinon.stub().returns(5);
+      });
+
+      it('should incr the id for that queue', function() {
+
+
+
+      });
+    });
+
+  });
+
 });

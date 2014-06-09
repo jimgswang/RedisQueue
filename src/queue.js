@@ -21,6 +21,8 @@ function Rq(queueName, options) {
 Rq.prototype.enqueue = function (data) {
 
   // get new id for task
+  var id = this._client.incr(this._prefix + ":id", redis.print);
+  console.log(id);
 
 
 
