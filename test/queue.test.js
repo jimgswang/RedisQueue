@@ -4,14 +4,15 @@
 var expect = require('chai').expect,
     sinon = require('sinon'),
     redis = require('redis'),
-    Queue = require('../src/queue') 
+    Queue = require('../src/queue'),
+    EventEmitter = require('events').EventEmitter
 ;
 
 describe('Queue', function() {
 
   beforeEach(function() {
 
-    sinon.stub(redis, 'createClient').returns({});
+    sinon.stub(redis, 'createClient').returns(new EventEmitter());
   });
 
   afterEach(function() {
@@ -36,6 +37,21 @@ describe('Queue', function() {
       expect(queue.port).to.equal(1234);
       sinon.assert.calledWith(redis.createClient, 1234, 'foo');
     
+    });
+
+    it('should emit error when redis client emits error', function(done) {
+
+      var queue = new Queue('test', {host: 'foo', port: 1234 }),
+          error = new Error()
+      ;
+
+      queue.on('error', function(err) {
+        expect(err).to.equal(error);
+        done();
+      });
+
+      queue._client.emit('error', error);
+
     });
   });
 
