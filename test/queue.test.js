@@ -4,6 +4,7 @@
 var expect = require('chai').expect,
     sinon = require('sinon'),
     redis = require('redis'),
+    async = require('async'),
     Queue = require('../src/queue'),
     EventEmitter = require('events').EventEmitter
 ;
@@ -80,11 +81,12 @@ describe('Queue', function() {
       it('should execute callback', function(done) {
 
         queue.enqueue({}, done);
-        client.incr.yield();
-        client.hmset.yield();
-        client.rpush.yield();
-      });
 
+        client.incr.yields(null, 1);
+        client.hmset.yields(null, true);
+        client.rpush.yields(null, true);
+
+      });
     });
 
   });

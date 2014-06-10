@@ -5,7 +5,9 @@ var redis = require('redis'),
     Task = require('./task'),
     EventEmitter = require('events').EventEmitter,
     util = require('util'),
+    async = require('async'),
     _ = require('lodash')
+
 ;
 
 /** 
@@ -42,6 +44,7 @@ function Rq(queueName, options) {
 
 util.inherits(Rq, EventEmitter);
 
+
 /**
  * Add new task to the queue
  * @param {Object} data - the hash associated with queue'd task
@@ -50,31 +53,32 @@ util.inherits(Rq, EventEmitter);
 Rq.prototype.enqueue = function (data, callback) {
 
   var self = this,
-      cb = callback || _.noop()
+      cb = callback || _.noop(),
+      taskId
   ;
   
   if(typeof cb !== 'function') {
     throw new TypeError('callback must be a function');
   }
 
-  // get new id for task
-  this._client.incr(this._prefix + "id", function(err, res) {
-    if(err) {
-      self.emit('error', err);
-      return;
+
+  async.waterfall([
+    function(callback) {
+      self._client.incr(self.keys.id, callback);
+    },
+    function(id, callback) {
+      taskId = id;
+      self._client.hmset(self.getKeyForId(id), data, callback);
+    },
+    function(res, callback) {
+      self._client.rpush(self.keys.waiting, taskId, callback);
     }
-
-    var id = res,
-        task = new Task(self, id, data)
-    ;
-
-    self._client.hmset(self._prefix + id, data, function(err, res) {
-
-      self._client.rpush(self.keys.waiting, id, cb);
-    });
+  ], function(err, result) {
+    cb();
   });
-
+    
 };
+
 
 /** 
  * Get the redis key for a task id
@@ -84,5 +88,6 @@ Rq.prototype.enqueue = function (data, callback) {
 Rq.prototype.getKeyForId = function(id) {
   return this._prefix + id;
 };
+
 
 module.exports = exports = Rq;
