@@ -71,7 +71,7 @@ Rq.prototype.enqueue = function (data, callback) {
       self._client.hmset(self.getKeyForId(id), data, callback);
     },
     function(res, callback) {
-      self._client.rpush(self.keys.waiting, taskId, callback);
+      self._client.lpush(self.keys.waiting, taskId, callback);
     }
   ], function(err, result) {
     cb();
@@ -80,6 +80,20 @@ Rq.prototype.enqueue = function (data, callback) {
 };
 
 
+/**
+ * Get the next task in queue and process it
+ * @param {Function} handler - the function to process the task,
+ *                             it receives a task param
+ */
+Rq.prototype.dequeue = function(handler) {
+
+  if(typeof handler !== 'function') {
+    throw new TypeError('handler must be a function');
+  }
+
+
+
+};
 /** 
  * Get the redis key for a task id
  * @param {Number} id - the task id

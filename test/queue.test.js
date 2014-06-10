@@ -73,7 +73,7 @@ describe('Queue', function() {
       beforeEach(function() {
         queue._client.incr = new sinon.stub();
         queue._client.hmset = new sinon.stub();
-        queue._client.rpush = new sinon.stub();
+        queue._client.lpush = new sinon.stub();
 
       });
 
@@ -84,7 +84,7 @@ describe('Queue', function() {
 
         client.incr.yields(null, 1);
         client.hmset.yields(null, true);
-        client.rpush.yields(null, true);
+        client.lpush.yields(null, true);
 
       });
     });
