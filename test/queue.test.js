@@ -57,25 +57,34 @@ describe('Queue', function() {
 
   describe('methods', function() {
 
-    var queue
+    var queue,
+        client
     ;
 
     beforeEach(function() {
       queue = new Queue('test', {});
+      client = queue._client;
 
     });
 
     describe('.enqueue', function() {
 
       beforeEach(function() {
-        queue._client.incr = new sinon.stub().returns(5);
-      });
-
-      it('should incr the id for that queue', function() {
-
-
+        queue._client.incr = new sinon.stub();
+        queue._client.hmset = new sinon.stub();
+        queue._client.rpush = new sinon.stub();
 
       });
+
+
+      it('should execute callback', function(done) {
+
+        queue.enqueue({}, done);
+        client.incr.yield();
+        client.hmset.yield();
+        client.rpush.yield();
+      });
+
     });
 
   });

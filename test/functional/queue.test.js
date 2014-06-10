@@ -17,7 +17,8 @@ describe('set up', function() {
 describe('RedisQueue', function() {
 
   var queue,
-      client
+      client,
+      data
   ;
 
   beforeEach(function(done) {
@@ -27,6 +28,10 @@ describe('RedisQueue', function() {
       port: process.env.REDIS_PORT
     });
 
+    data = {
+      foo: 'bar'
+    };
+
     client = queue._client;
     queue._client.flushdb(done);
   });
@@ -35,8 +40,8 @@ describe('RedisQueue', function() {
 
     it('creates new id in redis', function(done) {
 
-      queue.enqueue({foo: 'bar'}, function() {
-        client.get(queue._prefix + "id", function(err, res) {
+      queue.enqueue(data, function() {
+        client.get(queue.keys.id, function(err, res) {
           expect(res).to.equal('1');
           done();
         });
@@ -45,12 +50,19 @@ describe('RedisQueue', function() {
 
     it('sets the task data', function(done) {
 
-      var data = { foo: 'bar' }
-      ;
+      queue.enqueue(data, function() {
+        client.hgetall(queue.getKeyForId(1), function(err, res) {
+          expect(res).to.deep.equal(data);
+          done();
+        });
+      });
+    });
+
+    it('pushes job id into waiting list', function(done) {
 
       queue.enqueue(data, function() {
-        client.hgetall(queue._prefix + '1', function(err, res) {
-          expect(res).to.deep.equal(data);
+        client.rpop(queue.keys.waiting, function(err, res) {
+          expect(res).to.equal('1');
           done();
         });
       });
