@@ -8,7 +8,8 @@ var redis = require('redis'),
     async = require('async'),
     uuid = require('node-uuid'),
     config = require('../config'),
-    _ = require('lodash')
+    _ = require('lodash'),
+    utils = require('./utils')
 
 ;
 
@@ -48,7 +49,6 @@ function Rq(queueName, options) {
 
 util.inherits(Rq, EventEmitter);
 
-
 /**
  * Add new task to the queue
  * @param {Object} data - the hash associated with queue'd task
@@ -57,15 +57,10 @@ util.inherits(Rq, EventEmitter);
 Rq.prototype.enqueue = function (data, callback) {
 
   var self = this,
-      cb = callback || _.noop,
+      cb = utils.optCallback(callback),
       taskId
   ;
   
-  if(typeof cb !== 'function') {
-    throw new TypeError('callback must be a function');
-  }
-
-
   async.waterfall([
     function(callback) {
       self._client.incr(self.keys.id, callback);
@@ -107,7 +102,7 @@ Rq.prototype.dequeue = function(handler) {
     function(id, callback) {
 
       taskId = id;
-      self.lock(id, callback);
+      self.lock(id, false, callback);
     },
     function(result, callback) {
 
@@ -122,7 +117,7 @@ Rq.prototype.dequeue = function(handler) {
     function(data, callback) {
 
       var task = new Task(taskId, data);
-      callback(task);
+      callback(null, task);
     }
   ], function(err, result) {
 
@@ -130,10 +125,13 @@ Rq.prototype.dequeue = function(handler) {
       self.emit('error', err);
     } 
     else {
-      handler(result, _.bind(self.unlock, self, result.id));
+      handler(result, _.bind(self._done, self, result));
+
     }
   });
+
 };
+
 
 /** 
  * Get the redis key for a task id
@@ -156,12 +154,8 @@ Rq.prototype.lock = function(id, renew, callback) {
                 : 'NX',
       key = this.getKeyForId(id) + ':lock',
       self = this,
-      cb = callback || _.noop
+      cb = utils.optCallback(callback)
   ;
-
-  if(typeof cb !== 'function') {
-    throw new TypeError('callback must be a function');
-  }
 
   self._client.set(key, self._lockToken, 'PX', config.lockTime, x, function(err, res) {
     self._checkLockStatus(err, res);
@@ -182,11 +176,42 @@ Rq.prototype._checkLockStatus = function(err, result) {
   }
 };
 
+Rq.prototype._done = function(task, err, callback) {
+
+  if(typeof err === 'function' && !callback) {
+    callback = err;
+    err = null;
+  }
+
+  var cb = utils.optCallback(callback)
+  ;
+
+  this.unlock(task.id);
+  if(err) {
+    this.emit('error', err);
+    this._client.multi()
+      .lrem(this.keys.working, 0, task.id)
+      .lpush(this.keys.failed, task.id)
+      .exec(function (err, res) {
+        cb(err, res);
+      });
+  }
+  else {
+    this._client.multi()
+      .lrem(this.keys.working, 0, task.id)
+      .lpush(this.keys.completed, task.id)
+      .exec(function (err, res) {
+        cb(err, res);
+      });
+  }
+
+};
 
 /**
  * Release a lock for a task id
  * LUA script from http://redis.io/commands/SET
  * @param {Number} id - the task id
+ * @param {Function} [callback] - callback to execute
  */
 Rq.prototype.unlock = function(id, callback) {
   var script = 'if redis.call("get",KEYS[1]) == ARGV[1] ' +
@@ -194,11 +219,12 @@ Rq.prototype.unlock = function(id, callback) {
                  'return redis.call("del", KEYS[1]) ' +
                'else ' +
                  'return 0 ' + 
-               'end'
+               'end',
+      cb = utils.optCallback(callback);
   ;
 
   clearTimeout(this.lockTimeout);
-  this._client.eval(script, 1, this.getKeyForId(id) + ':lock', this._lockToken, callback);
+  this._client.eval(script, 1, this.getKeyForId(id) + ':lock', this._lockToken, cb);
 
 };
 

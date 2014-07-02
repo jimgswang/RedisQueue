@@ -67,17 +67,12 @@ describe('Queue', function() {
       queue = new Queue('test', {});
       client = queue._client;
 
+      queue._client.incr = new sinon.stub();
+      queue._client.hmset = new sinon.stub();
+      queue._client.lpush = new sinon.stub();
     });
 
     describe('.enqueue', function() {
-
-      beforeEach(function() {
-        queue._client.incr = new sinon.stub();
-        queue._client.hmset = new sinon.stub();
-        queue._client.lpush = new sinon.stub();
-
-      });
-
 
       it('should execute callback', function(done) {
 
@@ -146,7 +141,7 @@ describe('Queue', function() {
         client.eval.yield(null, 'OK');
       });
 
-      it.only('stops future calls to lock', function(done) {
+      it('stops future calls to lock', function(done) {
 
         var self = this
         ;
@@ -165,6 +160,38 @@ describe('Queue', function() {
       });
 
     });
-  });
 
+
+    describe('dequeue', function() {
+
+      beforeEach(function() {
+
+        client.brpoplpush = sinon.stub();
+        client.set = sinon.stub();
+        client.hgetall = sinon.stub();
+        client.eval = sinon.stub();
+        client.multi = sinon.stub().returns({
+          lrem : sinon.stub().returns({
+            lpush : sinon.stub().returns({
+              exec : sinon.stub().yields(null, [])
+            })
+          })
+        });
+      });
+
+      it('is passed a done callback to signal task completion', function(finished) {
+
+        queue.dequeue(function(task, done) {
+
+          done(finished);
+        });
+
+        client.brpoplpush.yields(null, 1);
+        client.set.yields(null, 'OK');
+        client.hgetall.yields(null, {foo:'bar'});
+        client.eval.yields(null, 'OK');
+
+      });
+    });
+  });
 });
