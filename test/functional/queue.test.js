@@ -122,5 +122,23 @@ describe('RedisQueue', function() {
         done();
       });
     });
+
+    describe('.unlock', function() {
+
+      it('removes a lock', function(done) {
+
+        queue.lock('1', false, function() {
+
+          queue.unlock('1', function() {
+
+            client.get(queue.getKeyForId('1') + ':lock', function(err, res) {
+              expect(res).to.be.null;
+              done();
+            });
+          });
+
+        });
+      });
+    });
   });
 });

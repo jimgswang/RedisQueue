@@ -29,6 +29,7 @@ function Rq(queueName, options) {
   this.port = options.port || 6327;
   this.queue = queueName;
 
+  this._lockToken = uuid.v4();
   this._prefix = 'rq:' + queueName + ':';
   this._client = redis.createClient(this.port, this.host);
 
@@ -155,7 +156,6 @@ Rq.prototype.lock = function(id, renew, callback) {
                 : 'NX',
       key = this.getKeyForId(id) + ':lock',
       self = this,
-      lockToken = uuid.v4(),
       cb = callback || _.noop
   ;
 
@@ -163,10 +163,11 @@ Rq.prototype.lock = function(id, renew, callback) {
     throw new TypeError('callback must be a function');
   }
 
-  self._client.set(key, lockToken, 'PX', config.lockTime, x, function(err, res) {
+  self._client.set(key, self._lockToken, 'PX', config.lockTime, x, function(err, res) {
     self._checkLockStatus(err, res);
     cb(err, res);
   });
+
 
   self.lockTimeout = setTimeout(function() {
     self.lock(id, true, self._checkLockStatus);
@@ -184,9 +185,20 @@ Rq.prototype._checkLockStatus = function(err, result) {
 
 /**
  * Release a lock for a task id
+ * LUA script from http://redis.io/commands/SET
  * @param {Number} id - the task id
  */
-Rq.prototype.unlock = function(id) {
+Rq.prototype.unlock = function(id, callback) {
+  var script = 'if redis.call("get",KEYS[1]) == ARGV[1] ' +
+               'then ' +
+                 'return redis.call("del", KEYS[1]) ' +
+               'else ' +
+                 'return 0 ' + 
+               'end'
+  ;
+
+  clearTimeout(this.lockTimeout);
+  this._client.eval(script, 1, this.getKeyForId(id) + ':lock', this._lockToken, callback);
 
 };
 

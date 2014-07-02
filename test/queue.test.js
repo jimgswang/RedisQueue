@@ -6,7 +6,8 @@ var expect = require('chai').expect,
     redis = require('redis'),
     async = require('async'),
     Queue = require('../src/queue'),
-    EventEmitter = require('events').EventEmitter
+    EventEmitter = require('events').EventEmitter,
+    config = require('../config')
 ;
 
 describe('Queue', function() {
@@ -89,6 +90,81 @@ describe('Queue', function() {
       });
     });
 
+    describe('.lock', function() {
+
+      beforeEach(function () {
+        this.clock = sinon.useFakeTimers(); 
+        queue._client.set = new sinon.stub();
+      });
+
+      afterEach(function() {
+        this.clock.restore();
+      });
+
+      it('should execute callback', function(done) {
+
+        queue.lock('1', false, done);
+        client.set.yield(null, 'OK');
+
+      });
+
+      it('should renew lock by lockTimeout', function(done) {
+
+        var self = this
+        ;
+        queue.lock('1', false, function() {
+
+         var spy = sinon.spy(queue, 'lock');
+         self.clock.tick(config.lockTime);
+         sinon.assert.called(spy);
+         sinon.assert.alwaysCalledWith(spy, '1', true);
+         done();
+
+        });
+
+        client.set.yield(null, 'OK');
+      });
+
+    });
+
+    describe('.unlock', function() {
+
+      beforeEach(function() {
+        this.clock = sinon.useFakeTimers(); 
+        client.set = new sinon.stub();
+        client.eval = new sinon.stub();
+      });
+
+      afterEach(function() {
+
+        this.clock.restore();
+      });
+
+      it('should execute callback', function(done) {
+
+        queue.unlock('1', done);
+        client.eval.yield(null, 'OK');
+      });
+
+      it.only('stops future calls to lock', function(done) {
+
+        var self = this
+        ;
+
+        queue.lock('1', false, function() {
+          queue.unlock('1', function() {
+            var spy = sinon.spy(queue, 'lock');
+            self.clock.tick(config.lockTime * 2);
+            sinon.assert.notCalled(spy);
+            done();
+          });
+        });
+
+        client.set.yield(null, 'OK');
+        client.eval.yield(null, 'OK');
+      });
+
+    });
   });
 
 });
