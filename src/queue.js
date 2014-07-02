@@ -6,6 +6,8 @@ var redis = require('redis'),
     EventEmitter = require('events').EventEmitter,
     util = require('util'),
     async = require('async'),
+    uuid = require('node-uuid'),
+    config = require('../config'),
     _ = require('lodash')
 
 ;
@@ -32,7 +34,8 @@ function Rq(queueName, options) {
 
   this.keys = {
     id : this._prefix + 'id',
-    waiting : this._prefix + 'waiting'
+    waiting : this._prefix + 'waiting',
+    working : this._prefix + 'working'
   };
 
   this._client.on('error', function(err) {
@@ -53,7 +56,7 @@ util.inherits(Rq, EventEmitter);
 Rq.prototype.enqueue = function (data, callback) {
 
   var self = this,
-      cb = callback || _.noop(),
+      cb = callback || _.noop,
       taskId
   ;
   
@@ -91,9 +94,46 @@ Rq.prototype.dequeue = function(handler) {
     throw new TypeError('handler must be a function');
   }
 
+  var self = this,
+      taskId
+  ;
 
+  async.waterfall([
+    function(callback) {
+      // block until we get next task
+      self._client.brpoplpush(self.keys.waiting, self.keys.working, callback);
+    },
+    function(id, callback) {
 
+      taskId = id;
+      self.lock(id, callback);
+    },
+    function(result, callback) {
+
+      if(result === 'OK') {
+        self._client.hgetall(self.getKeyForId(taskId), callback);
+      }
+      else {
+        callback(new Error('Could not acquire lock for task id ' + taskId));
+      }
+
+    },
+    function(data, callback) {
+
+      var task = new Task(taskId, data);
+      callback(task);
+    }
+  ], function(err, result) {
+
+    if(err) {
+      self.emit('error', err);
+    } 
+    else {
+      handler(result, _.bind(self.unlock, self, result.id));
+    }
+  });
 };
+
 /** 
  * Get the redis key for a task id
  * @param {Number} id - the task id
@@ -103,5 +143,51 @@ Rq.prototype.getKeyForId = function(id) {
   return this._prefix + id;
 };
 
+
+/**
+ * Acquire  a lock for a task id
+ * @param {Number} id - the task id
+ * @param {Function} [callback] - callback to execute
+ */
+Rq.prototype.lock = function(id, renew, callback) {
+
+  var x = renew ? 'XX'
+                : 'NX',
+      key = this.getKeyForId(id) + ':lock',
+      self = this,
+      lockToken = uuid.v4(),
+      cb = callback || _.noop
+  ;
+
+  if(typeof cb !== 'function') {
+    throw new TypeError('callback must be a function');
+  }
+
+  self._client.set(key, lockToken, 'PX', config.lockTime, x, function(err, res) {
+    self._checkLockStatus(err, res);
+    cb(err, res);
+  });
+
+  self.lockTimeout = setTimeout(function() {
+    self.lock(id, true, self._checkLockStatus);
+  }, config.lockTime / 2);
+};
+
+
+Rq.prototype._checkLockStatus = function(err, result) {
+
+  if(result !== 'OK') {
+    this.emit('error', 'Could not acquire lock');
+  }
+};
+
+
+/**
+ * Release a lock for a task id
+ * @param {Number} id - the task id
+ */
+Rq.prototype.unlock = function(id) {
+
+};
 
 module.exports = exports = Rq;
