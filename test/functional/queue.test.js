@@ -154,7 +154,7 @@ describe('RedisQueue', function() {
   });
 
 
-  describe.only('.dequeue', function() {
+  describe('.dequeue', function() {
 
     beforeEach(function(done) {
 

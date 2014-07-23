@@ -49,6 +49,10 @@ function Rq(queueName, options) {
     self.emit('error', err);
   });
 
+  this._bclient.on('error', function(err) {
+    self.emit('error', err);
+  });
+
   EventEmitter.call(this);
 }
 

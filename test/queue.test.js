@@ -14,7 +14,10 @@ describe('Queue', function() {
 
   beforeEach(function() {
 
-    sinon.stub(redis, 'createClient').returns(new EventEmitter());
+    var stub = sinon.stub(redis, 'createClient');
+
+    stub.onFirstCall().returns(new EventEmitter());
+    stub.onSecondCall().returns(new EventEmitter());
   });
 
   afterEach(function() {
@@ -41,7 +44,7 @@ describe('Queue', function() {
     
     });
 
-    it('should emit error when redis client emits error', function(done) {
+    it('should emit error when non blocking redis client emits error', function(done) {
 
       var queue = new Queue('test', {host: 'foo', port: 1234 }),
           error = new Error()
@@ -53,23 +56,38 @@ describe('Queue', function() {
       });
 
       queue._nbclient.emit('error', error);
+    });
 
+    it('should emit error when blocking redis client emits error', function(done) {
+
+      var queue = new Queue('test', {host: 'foo', port: 1234 }),
+          error = new Error()
+      ;
+
+      queue.on('error', function(err) {
+        expect(err).to.equal(error);
+        done();
+      });
+
+      queue._bclient.emit('error', error);
     });
   });
 
   describe('methods', function() {
 
     var queue,
-        client
+        nbclient,
+        bclient
     ;
 
     beforeEach(function() {
       queue = new Queue('test', {});
-      client = queue._nbclient;
+      nbclient = queue._nbclient;
+      bclient = queue._bclient;
 
-      queue._nbclient.incr = new sinon.stub();
-      queue._nbclient.hmset = new sinon.stub();
-      queue._nbclient.lpush = new sinon.stub();
+      nbclient.incr = new sinon.stub();
+      nbclient.hmset = new sinon.stub();
+      nbclient.lpush = new sinon.stub();
     });
 
     describe('.enqueue', function() {
@@ -78,9 +96,9 @@ describe('Queue', function() {
 
         queue.enqueue({}, done);
 
-        client.incr.yields(null, 1);
-        client.hmset.yields(null, true);
-        client.lpush.yields(null, true);
+        nbclient.incr.yields(null, 1);
+        nbclient.hmset.yields(null, true);
+        nbclient.lpush.yields(null, true);
 
       });
     });
@@ -99,7 +117,7 @@ describe('Queue', function() {
       it('should execute callback', function(done) {
 
         queue.lock('1', false, done);
-        client.set.yield(null, 'OK');
+        nbclient.set.yield(null, 'OK');
 
       });
 
@@ -117,7 +135,7 @@ describe('Queue', function() {
 
         });
 
-        client.set.yield(null, 'OK');
+        nbclient.set.yield(null, 'OK');
       });
 
     });
@@ -126,8 +144,8 @@ describe('Queue', function() {
 
       beforeEach(function() {
         this.clock = sinon.useFakeTimers(); 
-        client.set = new sinon.stub();
-        client.eval = new sinon.stub();
+        nbclient.set = new sinon.stub();
+        nbclient.eval = new sinon.stub();
       });
 
       afterEach(function() {
@@ -138,7 +156,7 @@ describe('Queue', function() {
       it('should execute callback', function(done) {
 
         queue.unlock('1', done);
-        client.eval.yield(null, 'OK');
+        nbclient.eval.yield(null, 'OK');
       });
 
       it('stops future calls to lock', function(done) {
@@ -155,8 +173,8 @@ describe('Queue', function() {
           });
         });
 
-        client.set.yield(null, 'OK');
-        client.eval.yield(null, 'OK');
+        nbclient.set.yield(null, 'OK');
+        nbclient.eval.yield(null, 'OK');
       });
 
     });
@@ -166,11 +184,11 @@ describe('Queue', function() {
 
       beforeEach(function() {
 
-        client.brpoplpush = sinon.stub();
-        client.set = sinon.stub();
-        client.hgetall = sinon.stub();
-        client.eval = sinon.stub();
-        client.multi = sinon.stub().returns({
+        bclient.brpoplpush = sinon.stub();
+        nbclient.set = sinon.stub();
+        nbclient.hgetall = sinon.stub();
+        nbclient.eval = sinon.stub();
+        nbclient.multi = sinon.stub().returns({
           lrem : sinon.stub().returns({
             lpush : sinon.stub().returns({
               exec : sinon.stub().yields(null, [])
@@ -186,10 +204,10 @@ describe('Queue', function() {
           done(finished);
         });
 
-        client.brpoplpush.onFirstCall().yields(null, 1);
-        client.set.yields(null, 'OK');
-        client.hgetall.yields(null, {foo:'bar'});
-        client.eval.yields(null, 'OK');
+        bclient.brpoplpush.onFirstCall().yields(null, 1);
+        nbclient.set.yields(null, 'OK');
+        nbclient.hgetall.yields(null, {foo:'bar'});
+        nbclient.eval.yields(null, 'OK');
 
       });
 
