@@ -32,15 +32,20 @@ function Rq(queueName, options) {
 
   this._lockToken = uuid.v4();
   this._prefix = 'rq:' + queueName + ':';
-  this._client = redis.createClient(this.port, this.host);
+
+  // Client for normal commands
+  this._nbclient = redis.createClient(this.port, this.host);
+  // Blocking client for BRLPOPRPUSH command
+  this._bclient = redis.createClient(this.port, this.host);
 
   this.keys = {
     id : this._prefix + 'id',
     waiting : this._prefix + 'waiting',
-    working : this._prefix + 'working'
+    working : this._prefix + 'working',
+    completed: this._prefix + 'completed'
   };
 
-  this._client.on('error', function(err) {
+  this._nbclient.on('error', function(err) {
     self.emit('error', err);
   });
 
@@ -63,14 +68,14 @@ Rq.prototype.enqueue = function (data, callback) {
   
   async.waterfall([
     function(callback) {
-      self._client.incr(self.keys.id, callback);
+      self._nbclient.incr(self.keys.id, callback);
     },
     function(id, callback) {
       taskId = id;
-      self._client.hmset(self.getKeyForId(id), data, callback);
+      self._nbclient.hmset(self.getKeyForId(id), data, callback);
     },
     function(res, callback) {
-      self._client.lpush(self.keys.waiting, taskId, callback);
+      self._nbclient.lpush(self.keys.waiting, taskId, callback);
     }
   ], function(err, result) {
     cb();
@@ -94,10 +99,12 @@ Rq.prototype.dequeue = function(handler) {
       taskId
   ;
 
+  self._handler = handler;
+
   async.waterfall([
     function(callback) {
       // block until we get next task
-      self._client.brpoplpush(self.keys.waiting, self.keys.working, 0, callback);
+      self._bclient.brpoplpush(self.keys.waiting, self.keys.working, 0, callback);
     },
     function(id, callback) {
 
@@ -107,7 +114,7 @@ Rq.prototype.dequeue = function(handler) {
     function(result, callback) {
 
       if(result === 'OK') {
-        self._client.hgetall(self.getKeyForId(taskId), callback);
+        self._nbclient.hgetall(self.getKeyForId(taskId), callback);
       }
       else {
         callback(new Error('Could not acquire lock for task id ' + taskId));
@@ -161,7 +168,7 @@ Rq.prototype.lock = function(id, renew, callback) {
   }
 
   clearTimeout(self.lockTimeout);
-  self._client.set(args, function(err, res) {
+  self._nbclient.set(args, function(err, res) {
     self._checkLockStatus(err, res);
 
     if(res === 'OK') {
@@ -190,23 +197,26 @@ Rq.prototype._done = function(task, err, callback) {
     err = null;
   }
 
-  var cb = utils.optCallback(callback)
+  var cb = utils.optCallback(callback),
+      self = this
   ;
 
   this.unlock(task.id);
   if(err) {
-    this._client.multi()
+    this._nbclient.multi()
       .lrem(this.keys.working, 0, task.id)
       .lpush(this.keys.failed, task.id)
       .exec(function (err, res) {
+        self.dequeue(self._handler);
         cb(err, res);
       });
   }
   else {
-    this._client.multi()
+    this._nbclient.multi()
       .lrem(this.keys.working, 0, task.id)
       .lpush(this.keys.completed, task.id)
       .exec(function (err, res) {
+        self.dequeue(self._handler);
         cb(err, res);
       });
   }
@@ -230,7 +240,7 @@ Rq.prototype.unlock = function(id, callback) {
   ;
 
   clearTimeout(this.lockTimeout);
-  this._client.eval(script, 1, this.getKeyForId(id) + ':lock', this._lockToken, cb);
+  this._nbclient.eval(script, 1, this.getKeyForId(id) + ':lock', this._lockToken, cb);
 
 };
 

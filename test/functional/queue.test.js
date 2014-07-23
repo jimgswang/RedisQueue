@@ -33,13 +33,18 @@ describe('RedisQueue', function() {
       foo: 'bar'
     };
 
-    client = queue._client;
-    queue._client.flushdb(done);
+    client = queue._nbclient;
+    client.flushdb(done);
 
   });
 
   afterEach(function(done) {
-    queue.unlock('1', done);
+    queue._bclient.end();
+    queue.unlock('1', function(err, res) {
+      done();
+    });
+
+    queue = null;
   });
 
   describe('.enqueue', function() {
@@ -149,7 +154,7 @@ describe('RedisQueue', function() {
   });
 
 
-  describe('.dequeue', function() {
+  describe.only('.dequeue', function() {
 
     beforeEach(function(done) {
 
@@ -207,6 +212,40 @@ describe('RedisQueue', function() {
         fin();
 
       });
+    });
+
+    it('executes multiple tasks in order', function(fin) {
+      
+      var counter = 0
+      ;
+
+      async.series([
+        function(callback) {
+
+          queue.enqueue(data, callback);
+        },
+
+        function(callback) {
+
+          queue.dequeue(function(task, done) {
+
+            counter++;
+
+            done(function() {
+              if(counter === 2) {
+                client.llen(queue.keys.completed, function(err, res) {
+                  expect(res).to.equal(2);
+                  callback(null);
+                });
+              }
+            });
+          });
+        }
+      ],
+      function() {
+        fin();
+      });
+
     });
     
   });// end describe

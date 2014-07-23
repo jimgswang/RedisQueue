@@ -52,7 +52,7 @@ describe('Queue', function() {
         done();
       });
 
-      queue._client.emit('error', error);
+      queue._nbclient.emit('error', error);
 
     });
   });
@@ -65,11 +65,11 @@ describe('Queue', function() {
 
     beforeEach(function() {
       queue = new Queue('test', {});
-      client = queue._client;
+      client = queue._nbclient;
 
-      queue._client.incr = new sinon.stub();
-      queue._client.hmset = new sinon.stub();
-      queue._client.lpush = new sinon.stub();
+      queue._nbclient.incr = new sinon.stub();
+      queue._nbclient.hmset = new sinon.stub();
+      queue._nbclient.lpush = new sinon.stub();
     });
 
     describe('.enqueue', function() {
@@ -89,7 +89,7 @@ describe('Queue', function() {
 
       beforeEach(function () {
         this.clock = sinon.useFakeTimers(); 
-        queue._client.set = new sinon.stub();
+        queue._nbclient.set = new sinon.stub();
       });
 
       afterEach(function() {
@@ -186,12 +186,13 @@ describe('Queue', function() {
           done(finished);
         });
 
-        client.brpoplpush.yields(null, 1);
+        client.brpoplpush.onFirstCall().yields(null, 1);
         client.set.yields(null, 'OK');
         client.hgetall.yields(null, {foo:'bar'});
         client.eval.yields(null, 'OK');
 
       });
-    });
+
+    }); // end describe
   });
 });
