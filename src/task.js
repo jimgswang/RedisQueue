@@ -3,7 +3,7 @@
 
 function Task(queue, id, data) {
 
-  this.queue = queue;
+  this._queue = queue;
   this.id = id;
   this.data = data;
 }

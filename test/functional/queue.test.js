@@ -35,6 +35,11 @@ describe('RedisQueue', function() {
 
     client = queue._client;
     queue._client.flushdb(done);
+
+  });
+
+  afterEach(function(done) {
+    queue.unlock('1', done);
   });
 
   describe('.enqueue', function() {
@@ -98,7 +103,7 @@ describe('RedisQueue', function() {
       queue2.on('error', function(err) {
 
         expect(err).to.not.be.empty;
-        done();
+        queue2.unlock('1', done);
       });
 
       queue.lock('1', false, function() {
@@ -121,24 +126,89 @@ describe('RedisQueue', function() {
         expect(results[1]).to.equal('OK');
         done();
       });
+
     });
+  });
 
-    describe('.unlock', function() {
+  describe('.unlock', function() {
 
-      it('removes a lock', function(done) {
+    it('removes a lock', function(done) {
 
-        queue.lock('1', false, function() {
+      queue.lock('1', false, function() {
 
-          queue.unlock('1', function() {
+        queue.unlock('1', function() {
 
-            client.get(queue.getKeyForId('1') + ':lock', function(err, res) {
-              expect(res).to.be.null;
-              done();
-            });
+          client.get(queue.getKeyForId('1') + ':lock', function(err, res) {
+            expect(res).to.be.null;
+            done();
           });
-
         });
+
       });
     });
   });
+
+
+  describe('.dequeue', function() {
+
+    beforeEach(function(done) {
+
+      queue.enqueue(data, done);
+    });
+
+    it('moves job id to completed when done', function(fin) {
+
+      queue.dequeue(function(task, done) {
+        // do some work
+        //
+        done(function() {
+          client.multi()
+            .lrem(queue.keys.completed, 0, task.id)
+            .lrem(queue.keys.working, 0, task.id)
+            .lrem(queue.keys.failed, 0, task.id)
+            .exec(function(err, res) {
+
+              expect(res[0]).to.equal(1);
+              expect(res[1]).to.equal(0);
+              expect(res[2]).to.equal(0);
+              fin();
+            });
+        });
+      });
+
+    });
+
+    it('moves job id to failed when done is called with err', function(fin) {
+
+      var err = new Error('something failed');
+      queue.dequeue(function(task, done) {
+        done(err, function() {
+
+          client.multi()
+            .lrem(queue.keys.failed, 0, task.id)
+            .lrem(queue.keys.working, 0, task.id)
+            .lrem(queue.keys.completed, 0, task.id)
+            .exec(function(err, res) {
+              expect(res[0]).to.equal(1);
+              expect(res[1]).to.equal(0);
+              expect(res[2]).to.equal(0);
+              fin();
+            });
+        });
+      });
+    });
+
+    it('receives the correct data', function(fin) {
+
+      queue.dequeue(function(task, done) {
+        expect(task.id).to.equal('1');
+        expect(task.data).to.deep.equal(data);
+        done();
+        fin();
+
+      });
+    });
+    
+  });// end describe
+
 });

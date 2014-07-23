@@ -97,7 +97,7 @@ Rq.prototype.dequeue = function(handler) {
   async.waterfall([
     function(callback) {
       // block until we get next task
-      self._client.brpoplpush(self.keys.waiting, self.keys.working, callback);
+      self._client.brpoplpush(self.keys.waiting, self.keys.working, 0, callback);
     },
     function(id, callback) {
 
@@ -116,7 +116,7 @@ Rq.prototype.dequeue = function(handler) {
     },
     function(data, callback) {
 
-      var task = new Task(taskId, data);
+      var task = new Task(self, taskId, data);
       callback(null, task);
     }
   ], function(err, result) {
@@ -150,22 +150,29 @@ Rq.prototype.getKeyForId = function(id) {
  */
 Rq.prototype.lock = function(id, renew, callback) {
 
-  var x = renew ? 'XX'
-                : 'NX',
-      key = this.getKeyForId(id) + ':lock',
+  var key = this.getKeyForId(id) + ':lock',
       self = this,
-      cb = utils.optCallback(callback)
+      cb = utils.optCallback(callback),
+      args = [key, self._lockToken, 'PX', config.lockTime]
   ;
 
-  self._client.set(key, self._lockToken, 'PX', config.lockTime, x, function(err, res) {
+  if(!renew) {
+    args.push('NX');
+  }
+
+  clearTimeout(self.lockTimeout);
+  self._client.set(args, function(err, res) {
     self._checkLockStatus(err, res);
+
+    if(res === 'OK') {
+
+      self.lockTimeout = setTimeout(function() {
+        self.lock(id, true);
+      }, config.lockTime / 2);
+
+    }
     cb(err, res);
   });
-
-
-  self.lockTimeout = setTimeout(function() {
-    self.lock(id, true, self._checkLockStatus);
-  }, config.lockTime / 2);
 };
 
 
@@ -188,7 +195,6 @@ Rq.prototype._done = function(task, err, callback) {
 
   this.unlock(task.id);
   if(err) {
-    this.emit('error', err);
     this._client.multi()
       .lrem(this.keys.working, 0, task.id)
       .lpush(this.keys.failed, task.id)
@@ -220,7 +226,7 @@ Rq.prototype.unlock = function(id, callback) {
                'else ' +
                  'return 0 ' + 
                'end',
-      cb = utils.optCallback(callback);
+      cb = utils.optCallback(callback)
   ;
 
   clearTimeout(this.lockTimeout);
