@@ -9,7 +9,8 @@ var redis = require('redis'),
     uuid = require('node-uuid'),
     config = require('../config'),
     _ = require('lodash'),
-    utils = require('./utils')
+    utils = require('./utils'),
+    QueueErrors = require('./errors')
 
 ;
 
@@ -76,15 +77,17 @@ Rq.prototype.enqueue = function (data, callback) {
     },
     function(id, callback) {
       taskId = id;
-      self._nbclient.hmset(self.getKeyForId(id), data, callback);
+      self._nbclient.multi()
+        .lpush(self.keys.waiting, id)
+        .hmset(self.getKeyForId(id), data)
+        .exec(callback);
     },
-    function(res, callback) {
-      self._nbclient.lpush(self.keys.waiting, taskId, callback);
-    }
   ], function(err, result) {
-    cb();
+    if(err) {
+      self.emit('error', err); 
+    }
+    cb(err, result);
   });
-    
 };
 
 
@@ -117,11 +120,11 @@ Rq.prototype.dequeue = function(handler) {
     },
     function(result, callback) {
 
-      if(result === 'OK') {
+      if(self._isLocked(result)) {
         self._nbclient.hgetall(self.getKeyForId(taskId), callback);
       }
       else {
-        callback(new Error('Could not acquire lock for task id ' + taskId));
+        callback(QueueErrors.couldNotLock(taskId));
       }
 
     },
@@ -136,8 +139,7 @@ Rq.prototype.dequeue = function(handler) {
       self.emit('error', err);
     } 
     else {
-      handler(result, _.bind(self._done, self, result));
-
+      handler(result);
     }
   });
 
@@ -173,58 +175,31 @@ Rq.prototype.lock = function(id, renew, callback) {
 
   clearTimeout(self.lockTimeout);
   self._nbclient.set(args, function(err, res) {
-    self._checkLockStatus(err, res);
 
-    if(res === 'OK') {
+    if(self._isLocked(res)) {
 
       self.lockTimeout = setTimeout(function() {
         self.lock(id, true);
       }, config.lockTime / 2);
-
     }
+
+    else {
+      self.emit('error', QueueErrors.couldNotLock(id));
+    }
+
     cb(err, res);
   });
 };
 
 
-Rq.prototype._checkLockStatus = function(err, result) {
+/**
+ * Check redis response if lock was acquired
+ * @param {String} response - The response from redis
+ * @returns {Boolean} - True if successful
+ */
+Rq.prototype._isLocked = function(response) {
 
-  if(result !== 'OK') {
-    this.emit('error', 'Could not acquire lock');
-  }
-};
-
-Rq.prototype._done = function(task, err, callback) {
-
-  if(typeof err === 'function' && !callback) {
-    callback = err;
-    err = null;
-  }
-
-  var cb = utils.optCallback(callback),
-      self = this
-  ;
-
-  this.unlock(task.id);
-  if(err) {
-    this._nbclient.multi()
-      .lrem(this.keys.working, 0, task.id)
-      .lpush(this.keys.failed, task.id)
-      .exec(function (err, res) {
-        self.dequeue(self._handler);
-        cb(err, res);
-      });
-  }
-  else {
-    this._nbclient.multi()
-      .lrem(this.keys.working, 0, task.id)
-      .lpush(this.keys.completed, task.id)
-      .exec(function (err, res) {
-        self.dequeue(self._handler);
-        cb(err, res);
-      });
-  }
-
+  return response === 'OK';
 };
 
 /**

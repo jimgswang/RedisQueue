@@ -88,6 +88,18 @@ describe('Queue', function() {
       nbclient.incr = new sinon.stub();
       nbclient.hmset = new sinon.stub();
       nbclient.lpush = new sinon.stub();
+
+      nbclient.multi = sinon.stub().returns({
+        lpush: sinon.stub().returns({
+          hmset: sinon.stub().returns({
+            exec : sinon.stub().yields(null, [])
+          }),
+          lrem: sinon.stub().returns({
+            exec: sinon.stub().yields(null, [])
+          })
+        })
+      });
+
     });
 
     describe('.enqueue', function() {
@@ -97,9 +109,6 @@ describe('Queue', function() {
         queue.enqueue({}, done);
 
         nbclient.incr.yields(null, 1);
-        nbclient.hmset.yields(null, true);
-        nbclient.lpush.yields(null, true);
-
       });
     });
 
@@ -188,20 +197,13 @@ describe('Queue', function() {
         nbclient.set = sinon.stub();
         nbclient.hgetall = sinon.stub();
         nbclient.eval = sinon.stub();
-        nbclient.multi = sinon.stub().returns({
-          lrem : sinon.stub().returns({
-            lpush : sinon.stub().returns({
-              exec : sinon.stub().yields(null, [])
-            })
-          })
-        });
       });
 
-      it('is passed a done callback to signal task completion', function(finished) {
+      it('task is passed a done callback to signal task completion', function(finished) {
 
-        queue.dequeue(function(task, done) {
+        queue.dequeue(function(task) {
 
-          done(finished);
+          task.done(finished);
         });
 
         bclient.brpoplpush.onFirstCall().yields(null, 1);

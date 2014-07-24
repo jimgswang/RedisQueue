@@ -161,12 +161,12 @@ describe('RedisQueue', function() {
       queue.enqueue(data, done);
     });
 
-    it('moves job id to completed when done', function(fin) {
+    it('moves job id to completed when done', function(done) {
 
-      queue.dequeue(function(task, done) {
+      queue.dequeue(function(task) {
         // do some work
         //
-        done(function() {
+        task.done(function() {
           client.multi()
             .lrem(queue.keys.completed, 0, task.id)
             .lrem(queue.keys.working, 0, task.id)
@@ -176,18 +176,18 @@ describe('RedisQueue', function() {
               expect(res[0]).to.equal(1);
               expect(res[1]).to.equal(0);
               expect(res[2]).to.equal(0);
-              fin();
+              done();
             });
         });
       });
 
     });
 
-    it('moves job id to failed when done is called with err', function(fin) {
+    it('moves job id to failed when done is called with err', function(done) {
 
       var err = new Error('something failed');
-      queue.dequeue(function(task, done) {
-        done(err, function() {
+      queue.dequeue(function(task) {
+        task.done(err, function() {
 
           client.multi()
             .lrem(queue.keys.failed, 0, task.id)
@@ -197,24 +197,24 @@ describe('RedisQueue', function() {
               expect(res[0]).to.equal(1);
               expect(res[1]).to.equal(0);
               expect(res[2]).to.equal(0);
-              fin();
+              done();
             });
         });
       });
     });
 
-    it('receives the correct data', function(fin) {
+    it('receives the correct data', function(done) {
 
-      queue.dequeue(function(task, done) {
+      queue.dequeue(function(task) {
         expect(task.id).to.equal('1');
         expect(task.data).to.deep.equal(data);
+        task.done();
         done();
-        fin();
 
       });
     });
 
-    it('executes multiple tasks in order', function(fin) {
+    it('executes multiple tasks in order', function(done) {
       
       var counter = 0
       ;
@@ -227,11 +227,11 @@ describe('RedisQueue', function() {
 
         function(callback) {
 
-          queue.dequeue(function(task, done) {
+          queue.dequeue(function(task) {
 
             counter++;
 
-            done(function() {
+            task.done(function() {
               if(counter === 2) {
                 client.llen(queue.keys.completed, function(err, res) {
                   expect(res).to.equal(2);
@@ -243,7 +243,7 @@ describe('RedisQueue', function() {
         }
       ],
       function() {
-        fin();
+        done();
       });
 
     });
