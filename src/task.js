@@ -24,29 +24,20 @@ Task.prototype.done = function(err, callback) {
 
   var cb = utils.optCallback(callback),
       self = this,
-      queue = this._queue
+      queue = this._queue,
+      result = err ? queue.keys.failed
+                   : queue.keys.completed
   ;
 
   queue.unlock(self.id);
 
-  if(err) {
-    queue._nbclient.multi()
-      .lpush(queue.keys.failed, self.id)
-      .lrem(queue.keys.working, 0, self.id)
-      .exec(function (err, res) {
-        queue.dequeue(queue._handler);
-        cb(err, res);
-      });
-  }
-  else {
-    queue._nbclient.multi()
-      .lpush(queue.keys.completed, self.id)
-      .lrem(queue.keys.working, 0, self.id)
-      .exec(function (err, res) {
-        queue.dequeue(queue._handler);
-        cb(err, res);
-      });
-  }
+  queue._nbclient.multi()
+    .lpush(result, self.id)
+    .lrem(queue.keys.working, 0, self.id)
+    .exec(function (err, res) {
+      queue.dequeue(queue._handler);
+      cb(err, res);
+    });
 };
 
 module.exports = Task;
