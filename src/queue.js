@@ -1,4 +1,3 @@
-
 'use strict';
 
 var redis = require('redis'),
@@ -67,8 +66,7 @@ util.inherits(Rq, EventEmitter);
 Rq.prototype.enqueue = function (data, callback) {
 
   var self = this,
-      cb = utils.optCallback(callback),
-      taskId
+      cb = utils.optCallback(callback)
   ;
   
   async.waterfall([
@@ -76,7 +74,6 @@ Rq.prototype.enqueue = function (data, callback) {
       self._nbclient.incr(self.keys.id, callback);
     },
     function(id, callback) {
-      taskId = id;
       self._nbclient.multi()
         .lpush(self.keys.waiting, id)
         .hmset(self.getKeyForId(id), data)
@@ -114,35 +111,31 @@ Rq.prototype.dequeue = function(handler) {
       self._bclient.brpoplpush(self.keys.waiting, self.keys.working, 0, callback);
     },
     function(id, callback) {
-
       taskId = id;
       self.lock(id, false, callback);
     },
     function(result, callback) {
-
       if(self._isLocked(result)) {
         self._nbclient.hgetall(self.getKeyForId(taskId), callback);
       }
       else {
         callback(QueueErrors.couldNotLock(taskId));
       }
-
     },
     function(data, callback) {
 
       var task = new Task(self, taskId, data);
       callback(null, task);
     }
-  ], function(err, result) {
+  ], function(err, task) {
 
     if(err) {
       self.emit('error', err);
     } 
     else {
-      handler(result);
+      handler(task);
     }
   });
-
 };
 
 
@@ -194,6 +187,7 @@ Rq.prototype.lock = function(id, renew, callback) {
 
 /**
  * Check redis response if lock was acquired
+ * @api private
  * @param {String} response - The response from redis
  * @returns {Boolean} - True if successful
  */

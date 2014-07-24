@@ -1,4 +1,3 @@
-
 'use strict';
 
 var QueueErrors = require('../src/errors'),
