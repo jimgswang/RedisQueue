@@ -1,0 +1,11 @@
+language: node_js
+node_js:
+  - "0.10"
+services: 
+  - redis-server
+env: 
+  - REDIS_HOST=127.0.0.1 REDIS_PORT=6379
+
+before_install: 
+  - npm install -g grunt-cli
+  - df
