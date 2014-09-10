@@ -2,11 +2,12 @@
 
 var utils = require('./utils');
 
-function Task(queue, id, data) {
+function Task(queue, id, data, attempts) {
 
   this._queue = queue;
   this.id = id;
   this.data = data;
+  this.attempts = attempts || 0;
 }
 
 /**
@@ -30,6 +31,12 @@ Task.prototype.done = function(err, callback) {
 
   if(err) {
     queue.emit('fail', err, self);
+
+    if(self.attempts < queue._retries) {
+      self.attempts++;
+      queue._handler(self);
+      return;
+    }
   }
 
   queue.unlock(self.id);
