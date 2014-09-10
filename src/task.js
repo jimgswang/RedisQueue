@@ -28,13 +28,21 @@ Task.prototype.done = function(err, callback) {
                    : queue.keys.completed
   ;
 
-  queue.unlock(self.id);
+  if(err) {
+    queue.emit('fail', err, self);
+  }
 
+  queue.unlock(self.id);
   queue._nbclient.multi()
     .lpush(result, self.id)
     .lrem(queue.keys.working, 0, self.id)
     .exec(function (err, res) {
       queue.dequeue(queue._handler);
+
+      if(!err && result === queue.keys.completed) {
+        queue.emit('complete', self);
+      }
+
       cb(err, res);
     });
 };

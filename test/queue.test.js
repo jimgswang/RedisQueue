@@ -32,6 +32,7 @@ describe('Queue', function() {
       var queue = new Queue('test', {});
       expect(queue.host).to.equal('127.0.0.1');
       expect(queue.port).to.equal(6327);
+      expect(queue._retries).to.equal(0);
     });
 
     it('creates a new redis client with supplied options', function() {
@@ -199,17 +200,77 @@ describe('Queue', function() {
         nbclient.eval = sinon.stub();
       });
 
-      it('task is passed a done callback to signal task completion', function(finished) {
+      it('task is passed a done callback to signal task completion', function(done) {
 
         queue.dequeue(function(task) {
 
-          task.done(finished);
+          task.done(done);
         });
 
         bclient.brpoplpush.onFirstCall().yields(null, 1);
         nbclient.set.yields(null, 'OK');
         nbclient.hgetall.yields(null, {foo:'bar'});
         nbclient.eval.yields(null, 'OK');
+
+      });
+
+      it('emits complete event after done callback', function(done) {
+
+        var id;
+
+        queue.dequeue(function(task) {
+
+          id = task.id;
+          task.done();
+        });
+
+        queue.on('complete', function(task) {
+
+          expect(task.id).to.equal(task.id);
+          done();
+
+        });
+
+
+        queue.on('fail', function(task) {
+          throw new Error('should not fire fail event');
+        });
+
+        bclient.brpoplpush.onFirstCall().yields(null, 1);
+        nbclient.set.yields(null, 'OK');
+        nbclient.hgetall.yields(null, {foo:'bar'});
+        nbclient.eval.yields(null, 'OK');
+
+      });
+
+      it('emits fail event if done callback has err', function(done) {
+
+        var id,
+            error = new Error('foo');
+
+        queue.dequeue(function(task) {
+
+          id = task.id;
+          task.done(error);
+        });
+
+        queue.on('fail', function(err, task) {
+
+          expect(task.id).to.equal(task.id);
+          expect(err).to.equal(error);
+          done();
+
+        });
+
+        queue.on('complete', function(task) {
+          throw new Error('should not fire complete event');
+        });
+
+        bclient.brpoplpush.onFirstCall().yields(null, 1);
+        nbclient.set.yields(null, 'OK');
+        nbclient.hgetall.yields(null, {foo:'bar'});
+        nbclient.eval.yields(null, 'OK');
+
 
       });
 
