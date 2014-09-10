@@ -249,6 +249,26 @@ describe('RedisQueue', function() {
 
     });
     
+    it('doesnt retry completed task',  function(done) {
+      
+      var counter = 0
+      ;
+
+      queue.dequeue(function(task) {
+        counter++;
+        task.done();
+      });
+
+      queue.on('complete', function(task) {
+        expect(counter).to.equal(1);
+        done();
+      });
+
+      queue.on('fail', function() {
+        throw new Error('should not trigger fail event');
+      });
+    });
+
     it('retries failed tasks correct amount of times', function(done) {
       
       var counter = 0,
