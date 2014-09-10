@@ -49,6 +49,23 @@ Usage
     });
 
 
+##Retries:
+
+By default all tasks are only attempted once. You may queues to attempt a task multiple times. Re-attempts will happen immediately after a failed attempt by the *same* queue instance.
+
+##Events:
+
+Queues fire a number of events:
+    
+####queue.on('error', function(err) {})
+Whenever an error occurs with the queue or underlying redis client
+
+####queue.on('complete', function(task) {})
+Whenever a task is completed successfully
+
+####queue.on('fail', function(err, task) {})
+Whenever a task attempt is unsuccessful. Fired once for each attempt
+
 API
 ---------
 
@@ -57,6 +74,7 @@ API
 The constructor. Name specifies the name of the queue in redis. Queues only process tasks added to the queue with the same name. Options defines the redis settings including:
     host: host of the redis server. defaults to local host
     port: port of  redis server. defaults to 6379
+    retry: max number of retries if a task fails. defaults to 0
 
 
 ####Queue.enqueue(data)

@@ -26,7 +26,8 @@ describe('RedisQueue', function() {
 
     queue = new Queue('test', {
       host: process.env.REDIS_HOST,
-      port: process.env.REDIS_PORT
+      port: process.env.REDIS_PORT,
+      retry: 2
     });
 
     data = {
@@ -246,6 +247,36 @@ describe('RedisQueue', function() {
         done();
       });
 
+    });
+    
+    it('retries failed tasks correct amount of times', function(done) {
+      
+      var counter = 0,
+          fails = 0
+      ;
+
+      queue.dequeue(function(task) {
+
+        if(counter < 2) {
+
+          counter++;
+          task.done(new Error());
+        }
+        else {
+          task.done();
+        }
+      });
+
+      queue.on('complete', function(task) {
+        expect(counter).to.equal(2);
+        expect(fails).to.equal(2);
+        done();
+      });
+
+      // should fire fail twice
+      queue.on('fail', function() {
+        fails++;
+      });
     });
     
   });// end describe
