@@ -29,6 +29,7 @@ function Rq(queueName, options) {
   this.host = options.host || '127.0.0.1';
   this.port = options.port || 6327;
   this.queue = queueName;
+  this._retries = options.retry || 0;
 
   this._lockToken = uuid.v4();
   this._prefix = 'rq:' + queueName + ':';
